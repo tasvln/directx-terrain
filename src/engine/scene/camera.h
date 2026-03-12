@@ -2,6 +2,13 @@
 
 #include "utils/pch.h"
 
+enum class CameraMode
+{
+    Orbit,
+    FPS,
+    ThirdPerson
+};
+
 class Camera {
 public:
     Camera(
@@ -14,71 +21,67 @@ public:
 
     void update(float delta);
 
+    // Mode
+    void setMode(CameraMode newMode) { mode = newMode; }
+    CameraMode getMode() const { return mode; }
+
     // Orbit
     void orbit(float deltaYaw, float deltaPitch);
-
-    // onMouseWheel -> zoom controlas
-    void setFov(float newFov);
     void zoom(float wheelDelta);
-
-    // Pan
     void pan(float deltaX, float deltaY);
-
     void frameModel(const XMFLOAT3& center, float radius);
 
-    void setProjection(
-        float fov, 
-        float aspect, 
-        float nearZ, 
-        float farZ
-    );
+    // FPS
+    void setFPS(const XMFLOAT3& pos, float yaw, float pitch);
+    void updateFPSView();
 
-    XMMATRIX getViewMatrix() const { 
-        return view; 
-    }
+    // Third Person
+    void setThirdPerson(float distance = 5.0f, float height = 1.8f, float pitch = 0.3f);
+    void followPlayer(const XMFLOAT3& playerPos, float yaw, float pitch);
 
-    XMMATRIX getProjectionMatrix() const { 
-        return projection; 
-    }
+    // Shared
+    void setFov(float newFov);
+    void setTarget(const XMFLOAT3& t);
+    void setProjection(float fov, float aspect, float nearZ, float farZ);
+    void updatePositionFromOrbit();
 
-    XMMATRIX getViewProjectionMatrix() const {
-        return XMMatrixMultiply(view, projection);
-    }
+    XMMATRIX getViewMatrix()           const { return view; }
+    XMMATRIX getProjectionMatrix()     const { return projection; }
+    XMMATRIX getViewProjectionMatrix() const { return XMMatrixMultiply(view, projection); }
+    XMFLOAT3 getPosition()             const { return position; }
+    float    getFov()                  const { return fov; }
+    float    getRadius()               const { return radius; }
 
-    XMFLOAT3 getPosition() const {
-        return position;
-    }
-
-    float getFov() const { 
-        return fov; 
-    }
-
-    float getRadius() const { 
-        return radius; 
-    }
+    XMFLOAT3 getForward() const;
+    XMFLOAT3 getRight()   const;
 
 private:
     void updateViewMatrix();
-    void updatePositionFromOrbit();
 
 private:
+    CameraMode mode = CameraMode::Orbit;
+
     float fov;
     float aspect;
     float nearZ;
     float farZ;
 
-    float yaw = 0.0f; // left/right angle around the Y-axis
-    float pitch = 0.0f; // up/down angle
-    
-    float radius = 20.0f; // distance from target (how far the camera is)
-    float targetRadius = 20.0f;
+    float yaw   = 0.0f;
+    float pitch = 0.0f;
 
-    float minRadius = 1.0f;
-    float maxRadius = 100.0f;
+    float radius       = 20.0f;
+    float targetRadius = 20.0f;
+    float minRadius    = 1.0f;
+    float maxRadius    = 100.0f;
+
+    // Third person settings
+    float tpDistance = 5.0f;
+    float tpHeight   = 1.8f;
+    float tpPitch    = 0.3f;
 
     XMFLOAT3 position;
     XMFLOAT3 target;
-    
+
     XMMATRIX projection;
     XMMATRIX view;
 };

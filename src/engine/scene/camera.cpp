@@ -60,12 +60,18 @@ void Camera::setProjection(
     LOG_INFO(L"Projection matrix updated. FOV: %.2f, Aspect: %.2f, NearZ: %.2f, FarZ: %.2f", fov, aspect, nearZ, farZ);
 }
 
-void Camera::update(float delta) {
-    // Smoothly interpolate radius for dolly zoom
-    float t = 1.0f - std::exp(-delta * 5.0f); // smooth factor
-    radius = radius + (targetRadius - radius) * t;
-
-    updateViewMatrix();
+void Camera::update(float delta)
+{
+    if (mode == CameraMode::Orbit)
+    {
+        float t = 1.0f - std::exp(-delta * 5.0f);
+        radius = radius + (targetRadius - radius) * t;
+        updateViewMatrix();
+    }
+    else if (mode == CameraMode::FPS)
+    {
+        updateFPSView();
+    }
 }
 
 void Camera::updateViewMatrix() {
@@ -140,4 +146,90 @@ void Camera::pan(float deltaX, float deltaY)
 
     XMStoreFloat3(&target, tgt);
     updatePositionFromOrbit();
+}
+
+// FPS
+void Camera::setFPS(const XMFLOAT3& pos, float yaw, float pitch)
+{
+    mode = CameraMode::FPS;
+    position = pos;
+
+    this->yaw = yaw;
+    this->pitch = pitch;
+    updateFPSView();
+}
+
+void Camera::updateFPSView()
+{
+    XMVECTOR pos = XMLoadFloat3(&position);
+
+    XMVECTOR forward = XMVectorSet(
+        cosf(pitch) * sinf(yaw),
+        sinf(pitch),
+        cosf(pitch) * cosf(yaw),
+        0.0f
+    );
+
+    XMVECTOR up = XMVectorSet(0, 1, 0, 0);
+    view = XMMatrixLookToLH(pos, forward, up);
+}
+
+XMFLOAT3 Camera::getForward() const
+{
+    XMFLOAT3 f;
+    f.x = target.x - position.x;
+    f.y = 0.0f; // flatten for walking
+    f.z = target.z - position.z;
+
+    float len = std::sqrt(f.x * f.x + f.z * f.z);
+    if (len > 0.0f)
+    {
+        f.x /= len;
+        f.z /= len;
+    }
+
+    return f;
+}
+
+XMFLOAT3 Camera::getRight() const
+{
+    XMFLOAT3 f = getForward();
+
+    // cross(up, forward)
+    XMFLOAT3 r;
+    r.x =  f.z;
+    r.y =  0.0f;
+    r.z = -f.x;
+
+    return r;
+}
+
+void Camera::setTarget(const XMFLOAT3& t)
+{
+    target = t;
+}
+
+void Camera::setThirdPerson(float distance, float height, float pitch)
+{
+    mode        = CameraMode::ThirdPerson;
+    tpDistance  = distance;
+    tpHeight    = height;
+    tpPitch     = pitch;
+}
+
+void Camera::followPlayer(const XMFLOAT3& playerPos, float yaw, float pitch)
+{
+    float offsetX = -sinf(yaw)   * cosf(pitch) * tpDistance;
+    float offsetZ = -cosf(yaw)   * cosf(pitch) * tpDistance;
+    float offsetY =  sinf(pitch) * tpDistance + tpHeight;
+
+    position.x = playerPos.x + offsetX;
+    position.y = playerPos.y + offsetY;
+    position.z = playerPos.z + offsetZ;
+
+    target.x = playerPos.x;
+    target.y = playerPos.y + tpHeight * 0.8f;
+    target.z = playerPos.z;
+
+    updateViewMatrix();
 }

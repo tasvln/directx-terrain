@@ -30,6 +30,8 @@ class Grid {
 
         void updateGridParams(const XMFLOAT3& camPos, float fadeDistance = 300.0f);
 
+        float sampleHeight(float x, float z) const;
+
     private:
         ComPtr<ID3D12Device2> device;
         std::unique_ptr<Mesh> mesh;

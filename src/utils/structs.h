@@ -76,3 +76,13 @@ struct alignas(16) MaterialData
     float useSpecularMap; 
     XMFLOAT2 padding; 
 };
+
+struct PlayerState
+{
+    XMFLOAT3 position;
+    XMFLOAT3 velocity;
+
+    float radius;   // collision radius
+    float height;   // eye height
+    bool grounded;
+};

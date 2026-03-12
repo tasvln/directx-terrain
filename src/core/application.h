@@ -13,11 +13,18 @@ class Camera;
 class Lighting;
 class Grid;
 
+class PlayerController;
+
+class Keyboard;
+
 class UpdateEventArgs;
 class RenderEventArgs;
 class ResizeEventArgs;
 class MouseWheelEventArgs;
+class UpdateEventArgs;
 class MouseMotionEventArgs;
+
+class KeyEventArgs;
 
 class Application
 {
@@ -43,11 +50,18 @@ class Application
             D3D12_RESOURCE_STATES afterState
         );
 
+        void onKeyPressed(KeyEventArgs& e);
+        void onKeyReleased(KeyEventArgs& e);
+
     private:
         void init();
         void cleanUp();
 
     private:
+        float cameraYaw = 0.0f;
+        float cameraPitch = 0.3f;
+        float modelScale = 1.0f;
+        
         HWND hwnd = nullptr;
         WindowConfig config;
         RECT windowRect = {};
@@ -69,9 +83,13 @@ class Application
         std::unique_ptr<ConstantBuffer> mvpBuffer;
         std::unique_ptr<ConstantBuffer> materialBuffer;
         std::unique_ptr<Pipeline> pipeline1;
+        
+        std::unique_ptr<Keyboard> keyboard;
         std::unique_ptr<Camera> camera1;
 
         std::unique_ptr<Grid> sceneGrid;
 
         std::unique_ptr<Lighting> lighting1;
+
+        std::unique_ptr<PlayerController> player;
 };

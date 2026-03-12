@@ -31,7 +31,6 @@ Model::Model(
     // at top of loadModel() after you have validated `uploadQueue`
     if (uploadQueue) {
         uploadCmdList = uploadQueue->getCommandList();
-        LOG_INFO(L"[Model] Using upload command list from uploadQueue: %p", uploadCmdList.Get());
     }
 
     loadModel(path);
@@ -66,8 +65,6 @@ void Model::loadModel(const std::string& path) {
 
         uploadQueue->fenceWait(fence);
 
-        LOG_INFO(L"[Model] Texture uploads submitted and completed (fence=%llu)", fence);
-
         uploadCmdList.Reset();
     }
 
@@ -89,12 +86,6 @@ void Model::loadModel(const std::string& path) {
         extent.y * extent.y +
         extent.z * extent.z
     );
-
-    LOG_INFO(L"Model -> Global bounds Min(%.2f, %.2f, %.2f), "
-             L"Max(%.2f, %.2f, %.2f), Radius=%.2f",
-        globalMin.x, globalMin.y, globalMin.z,
-        globalMax.x, globalMax.y, globalMax.z,
-        boundingRadius);
 }
 
 void Model::processNode(aiNode* node, const aiScene* scene) {
@@ -201,8 +192,6 @@ std::unique_ptr<Mesh> Model::processMesh(aiMesh* mesh, const aiScene* scene) {
     globalMin = { std::min(globalMin.x, minPos.x), std::min(globalMin.y, minPos.y), std::min(globalMin.z, minPos.z) };
     globalMax = { std::max(globalMax.x, maxPos.x), std::max(globalMax.y, maxPos.y), std::max(globalMax.z, maxPos.z) };
 
-    LOG_DEBUG(L"[Model] Mesh processed. Final vertex count: %zu, index count: %zu", vertices.size(), indices.size());
-
     // --- Material & Texture Handling ---
     std::shared_ptr<Texture> texForMesh = nullptr;
 
@@ -217,7 +206,6 @@ std::unique_ptr<Mesh> Model::processMesh(aiMesh* mesh, const aiScene* scene) {
             std::string texStr(texPath.C_Str());
             if (!texStr.empty()) {
                 std::wstring wpath = resolveTexturePath(texStr);
-                LOG_INFO(L"[Model] Loading texture for mesh: %s", wpath.c_str());
 
                 // Only create one shared_ptr per texture; store in textures vector
                 auto texShared = std::make_shared<Texture>(device, uploadCmdList, srvHeap, wpath, nextDescriptorIndex++);
@@ -238,19 +226,16 @@ std::unique_ptr<Mesh> Model::processMesh(aiMesh* mesh, const aiScene* scene) {
 
     auto matPtr = std::make_shared<Material>(texForMesh);
     materials.push_back(matPtr);
-    LOG_INFO(L"[Model] Mesh material assigned, creating Mesh object");
 
     return std::make_unique<Mesh>(device, vertices, indices, matPtr);
 }
 
 void Model::draw(ID3D12GraphicsCommandList* cmdList, ID3D12DescriptorHeap* srvHeap, UINT rootIndex) {
-    LOG_INFO(L"[Model] draw() called: %zu meshes", meshes.size());
 
     ID3D12DescriptorHeap* heaps[] = { srvHeap };
     cmdList->SetDescriptorHeaps(_countof(heaps), heaps);
 
     for (size_t i = 0; i < meshes.size(); ++i) {
-        LOG_INFO(L"[Model] Drawing mesh %zu/%zu", i + 1, meshes.size());
         LOG_D3D12_MESSAGES(device);
         meshes[i]->draw(cmdList, rootIndex);
         LOG_D3D12_MESSAGES(device);

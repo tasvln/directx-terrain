@@ -52,6 +52,11 @@ Grid::Grid(
 
     std::vector<D3D12_STATIC_SAMPLER_DESC> samplers = {};
 
+    D3D12_RASTERIZER_DESC rasterDesc = CD3DX12_RASTERIZER_DESC(D3D12_DEFAULT);
+    rasterDesc.CullMode = D3D12_CULL_MODE_NONE; // no back-face culling
+    rasterDesc.FillMode = D3D12_FILL_MODE_SOLID;
+    rasterDesc.FrontCounterClockwise = FALSE;
+
     // Create pipeline
     pipeline = std::make_unique<Pipeline>(
         device,
@@ -61,11 +66,9 @@ Grid::Grid(
         rootParams,
         samplers,
         DXGI_FORMAT_R8G8B8A8_UNORM,
-        DXGI_FORMAT_D24_UNORM_S8_UINT
+        DXGI_FORMAT_D24_UNORM_S8_UINT,
+        &rasterDesc
     );
-
-    // Disable culling to make it visible from below
-    pipeline->getRasterizerDesc().CullMode = D3D12_CULL_MODE_NONE;
 
     // Constant buffers
     mvpBuffer = std::make_unique<ConstantBuffer>(device, static_cast<UINT>(sizeof(MVPConstantStruct)));
@@ -97,4 +100,9 @@ void Grid::draw(ID3D12GraphicsCommandList* cmdList)
     cmdList->SetGraphicsRootConstantBufferView(1, gridParamsBuffer->getGPUAddress());
 
     mesh->draw(cmdList, 0);
+}
+
+float Grid::sampleHeight(float x, float z) const
+{
+    return 0.0f;
 }

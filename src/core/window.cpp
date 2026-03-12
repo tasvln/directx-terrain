@@ -181,6 +181,31 @@ LRESULT Window::handleMessage(UINT msg, WPARAM wParam, LPARAM lParam)
                 onFullscreen();
                 return 0;
             }
+
+            if (app) {
+                KeyEventArgs keyArgs(
+                    static_cast<KeyCode::Key>(wParam),
+                    0,
+                    KeyEventArgs::Pressed,
+                    GetKeyState(VK_CONTROL) < 0,
+                    GetKeyState(VK_SHIFT)   < 0,
+                    GetKeyState(VK_MENU)    < 0
+                );
+                app->onKeyPressed(keyArgs);
+            }
+            break;
+        case WM_KEYUP:
+            if (app) {
+                KeyEventArgs keyArgs(
+                    static_cast<KeyCode::Key>(wParam),
+                    0,
+                    KeyEventArgs::Released,
+                    GetKeyState(VK_CONTROL) < 0,
+                    GetKeyState(VK_SHIFT)   < 0,
+                    GetKeyState(VK_MENU)    < 0
+                );
+                app->onKeyReleased(keyArgs);
+            }
             break;
 
         case WM_MOUSEMOVE:

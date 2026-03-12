@@ -14,8 +14,10 @@
 #include "engine/scene/camera.h"
 #include "engine/scene/lighting.h"
 #include "engine/scene/grid.h"
+#include "engine/scene/player_controller.h"
 
 #include "utils/events.h"
+#include "utils/keyboard.h"
 #include "utils/frame_timer.h"
 
 Application::Application(
@@ -114,6 +116,10 @@ void Application::init() {
     auto modelCenter = model->getBoundingCenter();
     auto modelRadius = model->getBoundingRadius();
 
+    modelScale = 200.0f / modelRadius;
+
+    keyboard = std::make_unique<Keyboard>();
+
     camera1 = std::make_unique<Camera>(
         45.0f,
         static_cast<float>(config.width) / static_cast<float>(config.height),
@@ -123,6 +129,7 @@ void Application::init() {
     LOG_INFO(L"Camera initialized!");
 
     camera1->frameModel(modelCenter, modelRadius);
+    camera1->setThirdPerson(6.0f, 3.0f, 0.3f);
 
     lighting1 = std::make_unique<Lighting>(
         device->getDevice()
@@ -134,6 +141,13 @@ void Application::init() {
         directCommandQueue.get(),
         swapchain->getSRVHeap()
     );
+
+    player = std::make_unique<PlayerController>();
+    
+    float startHeight = sceneGrid->sampleHeight(0.0f, 0.0f);
+
+    player->setPosition({0.0f, startHeight, 0.0f});
+    
 
     // pipeline
     // Root parameters: TODO: make it dynamic?
@@ -250,7 +264,7 @@ void Application::init() {
         0.0f, // innerAngle,
         0.0f, // outerAngle
         { 1.0f, 1.0f, 1.0f }, // color -> light color (sun or moon)
-        1.0f // intensity
+        20.0f // intensity
     );
 
     lighting1->setLight(
@@ -309,24 +323,60 @@ int Application::run() {
 
 void Application::onUpdate(UpdateEventArgs& args)
 {
-    camera1->update(static_cast<float>(args.totalTime));
+    // Movement relative to cameraYaw, not camera forward vector
+    XMFLOAT3 moveInput = { 0.0f, 0.0f, 0.0f };
 
-    // Rotate the cube over time
-    XMMATRIX model = XMMatrixIdentity();
-    XMMATRIX view = camera1->getViewMatrix();
+    float fw_x =  sinf(cameraYaw);
+    float fw_z =  cosf(cameraYaw);
+    float ri_x =  cosf(cameraYaw);
+    float ri_z = -sinf(cameraYaw);
+
+    if (keyboard->isDown(KeyCode::Key::W)) { moveInput.x += fw_x; moveInput.z += fw_z; }
+    if (keyboard->isDown(KeyCode::Key::S)) { moveInput.x -= fw_x; moveInput.z -= fw_z; }
+    if (keyboard->isDown(KeyCode::Key::D)) { moveInput.x += ri_x; moveInput.z += ri_z; }
+    if (keyboard->isDown(KeyCode::Key::A)) { moveInput.x -= ri_x; moveInput.z -= ri_z; }
+
+    float len = std::sqrt(moveInput.x * moveInput.x + moveInput.z * moveInput.z);
+    if (len > 1.0f) { moveInput.x /= len; moveInput.z /= len; }
+
+    bool jump = keyboard->isJustPressed(KeyCode::Key::Space);
+
+    player->update(
+        static_cast<float>(args.elapsedTime),
+        moveInput,
+        jump,
+        [&](float x, float z) { return sceneGrid->sampleHeight(x, z); }
+    );
+
+    const PlayerState& p = player->getState();
+
+    // Follow player with third person camera
+    camera1->followPlayer(p.position, cameraYaw, cameraPitch);
+
+    // XMMATRIX model      = XMMatrixIdentity();
+    XMFLOAT3 center = model->getBoundingCenter();
+    // XMMATRIX modelMat = XMMatrixScaling(modelScale, modelScale, modelScale);
+    XMMATRIX modelMat = 
+    XMMatrixScaling(modelScale, modelScale, modelScale) *
+    XMMatrixTranslation(
+        -center.x * modelScale,   // center X
+        -center.y * modelScale,   // sit on ground
+        -center.z * modelScale    // center Z
+    );
+    XMMATRIX view       = camera1->getViewMatrix();
     XMMATRIX projection = camera1->getProjectionMatrix();
 
-    // Update Constant Buffer In GPU
     MVPConstantStruct mvpData;
-    mvpData.model = XMMatrixTranspose(model);        
+    mvpData.model    = XMMatrixTranspose(modelMat);
     mvpData.viewProj = XMMatrixTranspose(view * projection);
     mvpBuffer->update(&mvpData, sizeof(mvpData));
 
     XMFLOAT3 camPos = camera1->getPosition();
     lighting1->setEyePosition(camPos);
-    lighting1->updateGPU(); // Push the light buffer to GPU
+    lighting1->updateGPU();
 
     sceneGrid->updateMVP(view * projection);
+    keyboard->tick();
 }
 
 void Application::onRender(RenderEventArgs& args)
@@ -509,19 +559,15 @@ void Application::onMouseWheel(MouseWheelEventArgs& args)
 }
 
 void Application::onMouseMoved(MouseMotionEventArgs& args) {
-    if (args.leftButton)
-    { 
-        if (args.shift) 
-        {
-            camera1->pan(
-                static_cast<float>(args.relX), 
-                static_cast<float>(args.relY)
-            );
+    if (args.leftButton) {
+        if (camera1->getMode() == CameraMode::ThirdPerson) {
+            cameraYaw   += static_cast<float>(args.relX) * 0.01f;
+            cameraPitch -= static_cast<float>(args.relY) * 0.01f;  // inverted Y feels natural
+            cameraPitch  = std::clamp(cameraPitch, -XM_PIDIV4, XM_PIDIV2 - 0.05f); // don't flip over
+        } else if (args.shift) {
+            camera1->pan(static_cast<float>(args.relX), static_cast<float>(args.relY));
         } else {
-            camera1->orbit(
-                static_cast<float>(args.relX) * 0.01f, 
-                static_cast<float>(args.relY) * 0.01f
-            );
+            camera1->orbit(static_cast<float>(args.relX) * 0.01f, static_cast<float>(args.relY) * 0.01f);
         }
     }
 }
@@ -598,3 +644,10 @@ void Application::cleanUp()
     LOG_INFO(L"Application cleanup finished.");
 }
 
+void Application::onKeyPressed(KeyEventArgs& e) {
+    keyboard->onKeyPressed(e.key);
+}
+
+void Application::onKeyReleased(KeyEventArgs& e) {
+    keyboard->onKeyReleased(e.key);
+}
