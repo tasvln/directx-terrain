@@ -5,7 +5,7 @@ DescriptorHeap::DescriptorHeap(
     D3D12_DESCRIPTOR_HEAP_TYPE type, 
     UINT numDescriptors, 
     bool shaderVisible
-) : type(type)
+) : type(type), capacity(numDescriptors)  
 {
     D3D12_DESCRIPTOR_HEAP_DESC desc = {};
     desc.NumDescriptors = numDescriptors;

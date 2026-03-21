@@ -4,6 +4,11 @@
 #include "mesh.h"
 #include "descriptor_heap.h"
 #include "command_queue.h"
+#include "pipeline.h"
+#include "material.h"
+#include "command_queue.h"
+#include "resources/texture.h"
+#include "resources/constant.h"
 
 #include <assimp/scene.h>
 #include <assimp/Importer.hpp>
@@ -34,6 +39,7 @@ Model::Model(
     }
 
     loadModel(path);
+    buildPipeline();
 }
 
 void Model::loadModel(const std::string& path) {
@@ -102,11 +108,11 @@ void Model::processNode(aiNode* node, const aiScene* scene) {
 }
 
 std::unique_ptr<Mesh> Model::processMesh(aiMesh* mesh, const aiScene* scene) {
-    LOG_INFO(L"[Model] Processing mesh: %hs, Vertices: %u, Faces: %u",
-        mesh->mName.C_Str(),
-        mesh->mNumVertices,
-        mesh->mNumFaces
-    );
+    // LOG_INFO(L"[Model] Processing mesh: %hs, Vertices: %u, Faces: %u",
+    //     mesh->mName.C_Str(),
+    //     mesh->mNumVertices,
+    //     mesh->mNumFaces
+    // );
 
     std::vector<VertexStruct> vertices;
     std::vector<uint32_t> indices;
@@ -208,7 +214,7 @@ std::unique_ptr<Mesh> Model::processMesh(aiMesh* mesh, const aiScene* scene) {
                 std::wstring wpath = resolveTexturePath(texStr);
 
                 // Only create one shared_ptr per texture; store in textures vector
-                auto texShared = std::make_shared<Texture>(device, uploadCmdList, srvHeap, wpath, nextDescriptorIndex++);
+                auto texShared = std::make_shared<Texture>(device, uploadCmdList, srvHeap, wpath, srvHeap->allocate());
                 textures.push_back(texShared);
                 texForMesh = texShared;
             }
@@ -230,18 +236,101 @@ std::unique_ptr<Mesh> Model::processMesh(aiMesh* mesh, const aiScene* scene) {
     return std::make_unique<Mesh>(device, vertices, indices, matPtr);
 }
 
-void Model::draw(ID3D12GraphicsCommandList* cmdList, ID3D12DescriptorHeap* srvHeap, UINT rootIndex) {
+void Model::buildPipeline()
+{
+    CD3DX12_ROOT_PARAMETER cbvMvp, cbvMaterial, cbvLight;
+    cbvMvp.InitAsConstantBufferView(0, 0, D3D12_SHADER_VISIBILITY_VERTEX);
+    cbvMaterial.InitAsConstantBufferView(1, 0, D3D12_SHADER_VISIBILITY_PIXEL);
+    cbvLight.InitAsConstantBufferView(2, 0, D3D12_SHADER_VISIBILITY_PIXEL);
 
-    ID3D12DescriptorHeap* heaps[] = { srvHeap };
-    cmdList->SetDescriptorHeaps(_countof(heaps), heaps);
+    CD3DX12_DESCRIPTOR_RANGE srvRange, normalRange, specularRange;
+    srvRange.Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0);
+    normalRange.Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 1);
+    specularRange.Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 2);
 
-    for (size_t i = 0; i < meshes.size(); ++i) {
-        LOG_D3D12_MESSAGES(device);
-        meshes[i]->draw(cmdList, rootIndex);
-        LOG_D3D12_MESSAGES(device);
-    }
+    CD3DX12_ROOT_PARAMETER srvParam, normalParam, specularParam;
+    srvParam.InitAsDescriptorTable(1, &srvRange, D3D12_SHADER_VISIBILITY_PIXEL);
+    normalParam.InitAsDescriptorTable(1, &normalRange, D3D12_SHADER_VISIBILITY_PIXEL);
+    specularParam.InitAsDescriptorTable(1, &specularRange, D3D12_SHADER_VISIBILITY_PIXEL);
 
-    LOG_INFO(L"[Model] draw() completed for %zu meshes", meshes.size());
+    std::vector<D3D12_ROOT_PARAMETER> rootParams = {
+        cbvMvp, cbvMaterial, cbvLight,
+        srvParam, normalParam, specularParam
+    };
+
+    std::vector<D3D12_INPUT_ELEMENT_DESC> inputLayout = {
+        { "POSITION", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, D3D12_APPEND_ALIGNED_ELEMENT, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
+        { "NORMAL",   0, DXGI_FORMAT_R32G32B32_FLOAT,    0, D3D12_APPEND_ALIGNED_ELEMENT, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
+        { "TANGENT",  0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, D3D12_APPEND_ALIGNED_ELEMENT, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
+        { "TEXCOORD", 0, DXGI_FORMAT_R32G32_FLOAT,       0, D3D12_APPEND_ALIGNED_ELEMENT, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 }
+    };
+
+    D3D12_STATIC_SAMPLER_DESC sampler = {};
+    sampler.Filter           = D3D12_FILTER_MIN_MAG_MIP_LINEAR;
+    sampler.AddressU         = D3D12_TEXTURE_ADDRESS_MODE_WRAP;
+    sampler.AddressV         = D3D12_TEXTURE_ADDRESS_MODE_WRAP;
+    sampler.AddressW         = D3D12_TEXTURE_ADDRESS_MODE_WRAP;
+    sampler.MaxLOD           = D3D12_FLOAT32_MAX;
+    sampler.ComparisonFunc   = D3D12_COMPARISON_FUNC_ALWAYS;
+    sampler.ShaderRegister   = 0;
+    sampler.ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
+
+    pipeline = std::make_unique<Pipeline>(
+        device,
+        Shader(L"assets/shaders/vertex.cso"),
+        Shader(L"assets/shaders/pixel.cso"),
+        inputLayout, rootParams,
+        std::vector<D3D12_STATIC_SAMPLER_DESC>{ sampler },
+        DXGI_FORMAT_R8G8B8A8_UNORM,
+        DXGI_FORMAT_D24_UNORM_S8_UINT
+    );
+
+    mvpBuffer = std::make_unique<ConstantBuffer>(
+        device, static_cast<UINT>(sizeof(MVPConstantStruct))
+    );
+
+    // Default material
+    MaterialData mat{};
+    mat.emissive       = XMFLOAT4(0.0f, 0.0f, 0.0f, 1.0f);
+    mat.ambient        = XMFLOAT4(0.1f, 0.1f, 0.1f, 1.0f);
+    mat.diffuse        = XMFLOAT4(1.0f, 1.0f, 1.0f, 1.0f);
+    mat.specular       = XMFLOAT4(1.0f, 1.0f, 1.0f, 1.0f);
+    mat.specularPower  = 64.0f;
+    mat.useTexture     = 1;
+    mat.useNormalMap   = 0;
+    mat.useSpecularMap = 0;
+
+    materialBuffer = std::make_unique<ConstantBuffer>(
+        device, static_cast<UINT>(sizeof(MaterialData))
+    );
+    materialBuffer->update(&mat, sizeof(MaterialData));
+}
+
+void Model::draw(
+    ID3D12GraphicsCommandList* cmdList,
+    const XMMATRIX& viewProj,
+    D3D12_GPU_VIRTUAL_ADDRESS lightingCBV
+)
+{
+    // Update MVP from current world transform
+    MVPConstantStruct mvpData;
+    mvpData.model    = XMMatrixTranspose(worldTransform);
+    mvpData.viewProj = XMMatrixTranspose(viewProj);
+    mvpBuffer->update(&mvpData, sizeof(mvpData));
+
+    cmdList->SetPipelineState(pipeline->getPipelineState().Get());
+    cmdList->SetGraphicsRootSignature(pipeline->getRootSignature().Get());
+    cmdList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+
+    cmdList->SetGraphicsRootConstantBufferView(0, mvpBuffer->getGPUAddress());
+    cmdList->SetGraphicsRootConstantBufferView(1, materialBuffer->getGPUAddress());
+    cmdList->SetGraphicsRootConstantBufferView(2, lightingCBV);
+
+    ID3D12DescriptorHeap* heaps[] = { srvHeap->getHeap().Get() };
+    cmdList->SetDescriptorHeaps(1, heaps);
+
+    for (auto& mesh : meshes)
+        mesh->draw(cmdList, 3); // slot 3 = t0 SRV
 }
 
 std::wstring Model::resolveTexturePath(const std::string& texRel) const {
@@ -254,7 +343,7 @@ std::wstring Model::resolveTexturePath(const std::string& texRel) const {
 
 std::shared_ptr<Texture> Model::makeWhiteFallbackTexture() {
     std::wstring whitePath = DEFAULT_WHITE_TEXTURE;
-    auto tex = std::make_shared<Texture>(device, uploadCmdList, srvHeap, whitePath, nextDescriptorIndex++);
+    auto tex = std::make_shared<Texture>(device, uploadCmdList, srvHeap, whitePath, srvHeap->allocate());
     textures.push_back(tex);
     return tex;
 }

@@ -1,71 +1,71 @@
 #pragma once
 
 #include "utils/pch.h"
-#include "material.h"
-#include "resources/texture.h"
 
 class Mesh;
 class DescriptorHeap;
+class Pipeline;
+class ConstantBuffer;
 class CommandQueue;
+class Texture;
+class Material;
 
 class aiNode;
 class aiScene;
 class aiMesh;
 
 class Model {
-    public:
-        Model(
-            ComPtr<ID3D12Device2> device, 
-            CommandQueue* uploadQueue, 
-            DescriptorHeap* srvHeap, 
-            const std::string& path
-        );
+public:
+    Model(
+        ComPtr<ID3D12Device2> device,
+        CommandQueue* uploadQueue,
+        DescriptorHeap* srvHeap,
+        const std::string& path
+    );
 
-        ~Model() = default;
+    // Draw now handles everything internally
+    void draw(
+        ID3D12GraphicsCommandList* cmdList,
+        const XMMATRIX& viewProj,
+        D3D12_GPU_VIRTUAL_ADDRESS lightingCBV
+    );
 
-        // Draw the model. rootIndex is the root parameter index in the root signature
-        // that expects the SRV descriptor table (e.g. slot 1 in your pipeline).
-        void draw(
-            ID3D12GraphicsCommandList* cmdList, 
-            ID3D12DescriptorHeap* srvHeap,
-            UINT rootIndex
-        );
+    void setTransform(const XMMATRIX& transform) { worldTransform = transform; }
 
-        XMFLOAT3 getBoundingCenter() const { return boundingCenter; }
-        float getBoundingRadius() const { return boundingRadius; }
+    XMFLOAT3 getBoundingCenter() const { return boundingCenter; }
+    float     getBoundingRadius() const { return boundingRadius; }
 
-    private:
-        void loadModel(const std::string& path);
-        void processNode(aiNode* node, const aiScene* scene);
-        std::unique_ptr<Mesh> processMesh(aiMesh* mesh, const aiScene* scene);
+private:
+    void loadModel(const std::string& path);
+    void processNode(aiNode* node, const aiScene* scene);
+    std::unique_ptr<Mesh> processMesh(aiMesh* mesh, const aiScene* scene);
+    void buildPipeline();
 
-        // Helpers
-        std::wstring toWide(const std::string& s) const;
-        std::wstring resolveTexturePath(const std::string& relPath) const;
+    std::wstring resolveTexturePath(const std::string& relPath) const;
+    std::shared_ptr<Texture> makeWhiteFallbackTexture();
 
-        // Creates a 1x1 white fallback texture
-        std::shared_ptr<Texture> makeWhiteFallbackTexture();
+private:
+    ComPtr<ID3D12Device2> device;
+    CommandQueue*         uploadQueue  = nullptr;
+    DescriptorHeap*       srvHeap      = nullptr;
 
-    private:
-        ComPtr<ID3D12Device2> device;
+    ComPtr<ID3D12GraphicsCommandList2> uploadCmdList;
+    std::string directory;
 
-        CommandQueue* uploadQueue = nullptr;
-        ComPtr<ID3D12GraphicsCommandList2> uploadCmdList;
+    std::vector<std::unique_ptr<Mesh>>     meshes;
+    std::vector<std::shared_ptr<Material>> materials;
+    std::vector<std::shared_ptr<Texture>>  textures;
+    std::shared_ptr<Texture>               whiteTexture;
 
-        DescriptorHeap* srvHeap = nullptr;
+    // Pipeline owned by model
+    std::unique_ptr<Pipeline>       pipeline;
+    std::unique_ptr<ConstantBuffer> mvpBuffer;
+    std::unique_ptr<ConstantBuffer> materialBuffer;
 
-        std::string directory;
-        UINT nextDescriptorIndex = 0;
+    // World transform set externally each frame
+    XMMATRIX worldTransform = XMMatrixIdentity();
 
-        std::vector<std::unique_ptr<Mesh>> meshes;
-        std::vector<std::shared_ptr<Material>> materials; 
-        std::vector<std::shared_ptr<Texture>> textures;   
-
-        std::shared_ptr<Texture> whiteTexture; 
-
-        // Bounding box
-        XMFLOAT3 globalMin;
-        XMFLOAT3 globalMax;
-        XMFLOAT3 boundingCenter;
-        float boundingRadius = 0.0f;
+    XMFLOAT3 globalMin, globalMax;
+    XMFLOAT3 boundingCenter;
+    float     boundingRadius = 0.0f;
 };

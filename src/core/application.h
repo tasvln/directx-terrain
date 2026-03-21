@@ -12,37 +12,37 @@ class Pipeline;
 class Camera;
 class Lighting;
 class Grid;
-
 class PlayerController;
-
 class Keyboard;
+class Terrain;
+class Clock;
+class Sky;
 
 class UpdateEventArgs;
 class RenderEventArgs;
 class ResizeEventArgs;
 class MouseWheelEventArgs;
-class UpdateEventArgs;
 class MouseMotionEventArgs;
-
 class KeyEventArgs;
 
 class Application
 {
     public:
-        Application(HINSTANCE hInstance, WindowConfig &config);
+        Application(HINSTANCE hInstance, WindowConfig& config);
         ~Application();
 
-        // running the application
         int run();
 
-        void onResize(ResizeEventArgs& args);
-
-        // main functions for rendering / callbacks
+        // Window event callbacks — called by Window via IWindowEventHandler
         void onUpdate(UpdateEventArgs& args);
         void onRender(RenderEventArgs& args);
+        void onResize(ResizeEventArgs& args);
         void onMouseWheel(MouseWheelEventArgs& args);
         void onMouseMoved(MouseMotionEventArgs& args);
+        void onKeyPressed(KeyEventArgs& e);
+        void onKeyReleased(KeyEventArgs& e);
 
+        // Utility — transitions a GPU resource between states (e.g. present → render target)
         void transitionResource(
             ComPtr<ID3D12GraphicsCommandList2> commandList,
             ComPtr<ID3D12Resource> resource,
@@ -50,46 +50,46 @@ class Application
             D3D12_RESOURCE_STATES afterState
         );
 
-        void onKeyPressed(KeyEventArgs& e);
-        void onKeyReleased(KeyEventArgs& e);
-
     private:
         void init();
         void cleanUp();
 
     private:
-        float cameraYaw = 0.0f;
+        // --- Camera state ---
+        float cameraYaw   = 0.0f;
         float cameraPitch = 0.3f;
-        float modelScale = 1.0f;
-        
-        HWND hwnd = nullptr;
-        WindowConfig config;
-        RECT windowRect = {};
 
-        UINT currentBackBufferIndex;
-        uint64_t fenceValues[FRAMEBUFFERCOUNT] {};
+        // --- Model state ---
+        float modelScale = 1.0f;
+
+        // --- Window/DX12 state ---
+        HWND         hwnd     = nullptr;
+        WindowConfig config;
+        RECT         windowRect = {};
+
+        UINT     currentBackBufferIndex;
+        uint64_t fenceValues[FRAMEBUFFERCOUNT]{};
 
         D3D12_VIEWPORT viewport;
-        D3D12_RECT scissorRect;
+        D3D12_RECT     scissorRect;
 
-        // unique pttrsssssss -> GPU resources
-        std::unique_ptr<Window> window;
-        std::unique_ptr<Device> device;
+        // --- Core DX12 ---
+        std::unique_ptr<Window>       window;
+        std::unique_ptr<Device>       device;
         std::unique_ptr<CommandQueue> directCommandQueue;
-        // std::unique_ptr<CommandQueue> computeCommandQueue;
-        // std::unique_ptr<CommandQueue> copyCommandQueue;
-        std::unique_ptr<Swapchain> swapchain;
-        std::unique_ptr<Model> model;
-        std::unique_ptr<ConstantBuffer> mvpBuffer;
-        std::unique_ptr<ConstantBuffer> materialBuffer;
-        std::unique_ptr<Pipeline> pipeline1;
-        
-        std::unique_ptr<Keyboard> keyboard;
-        std::unique_ptr<Camera> camera1;
+        std::unique_ptr<Swapchain>    swapchain;
 
-        std::unique_ptr<Grid> sceneGrid;
-
-        std::unique_ptr<Lighting> lighting1;
-
+        // --- Scene ---
+        std::unique_ptr<Camera>          camera1;
+        std::unique_ptr<Lighting>        lighting1;
         std::unique_ptr<PlayerController> player;
+        std::unique_ptr<Keyboard>        keyboard;
+        std::unique_ptr<Clock>           clock;
+        std::unique_ptr<Grid>            sceneGrid;
+        std::unique_ptr<Terrain>         terrain1;
+        std::unique_ptr<Sky>         sky;
+
+        // --- Model ---
+        std::unique_ptr<Model>         model;
+        XMMATRIX viewProj = XMMatrixIdentity();
 };
