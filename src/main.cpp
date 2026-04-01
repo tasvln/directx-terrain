@@ -4,7 +4,7 @@
 // std::unique_ptr<Application> application;
 
 WindowConfig config = {
-    .appName = L"DirectX Model Renderer",
+    .appName = L"DirectX Terrain + Weather System Renderer",
     .windowClassName = L"DirectWindowClass",
     .width = 1440,
     .height = 700,

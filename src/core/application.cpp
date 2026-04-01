@@ -17,6 +17,9 @@
 #include "engine/scene/terrain.h"
 #include "engine/scene/weather/clock.h"
 #include "engine/scene/weather/sky.h"
+#include "engine/scene/weather/fog.h"
+#include "engine/scene/weather/system.h"
+#include "engine/scene/weather/particles.h"
 
 #include "utils/events.h"
 #include "utils/keyboard.h"
@@ -111,12 +114,19 @@ void Application::init()
     // --- Player — spawns just above terrain surface ---
     player = std::make_unique<PlayerController>();
     float startHeight = terrain1->sampleHeight(0.0f, 0.0f);
-    player->setPosition({ 0.0f, startHeight + 1.0f, 0.0f });
+    player->setPosition({ 0.0f, startHeight + 2.0f, 0.0f });
 
     // --- Time of day — starts at sunrise, 5 min day cycle ---
     clock = std::make_unique<Clock>(0.25f, 300.0f);
 
     sky = std::make_unique<Sky>(device->getDevice(), DXGI_FORMAT_R8G8B8A8_UNORM);
+    fog = std::make_unique<Fog>(device->getDevice());
+    weather = std::make_unique<WeatherSystem>();
+    particles = std::make_unique<Particles>(
+        device->getDevice(), 
+        directCommandQueue.get()
+    );
+
 }
 
 int Application::run()
@@ -143,7 +153,11 @@ int Application::run()
 
             // Show FPS + time of day in title bar
             SetWindowTextW(window->getHwnd(),
-                (std::wstring(config.appName) + L" - " + timer.getFPSString() + L" - " + clock->getTimeString()).c_str()
+                (std::wstring(config.appName)
+                + L" - " + timer.getFPSString()
+                + L" - " + clock->getTimeString()
+                + L" - " + weather->getWeatherString()
+                ).c_str()
             );
         }
     }
@@ -203,7 +217,29 @@ void Application::onUpdate(UpdateEventArgs& args)
     const TimeOfDayState& tod = clock->getState();
 
     lighting1->setEyePosition(camera1->getPosition());
-    lighting1->setGlobalAmbient(tod.ambientColor);
+
+    terrain1->update(viewProj, camera1->getPosition());
+
+    weather->update(static_cast<float>(args.elapsedTime));
+    const WeatherState& ws = weather->getCurrent();
+
+    sky->update(tod, camera1->getViewMatrix(), camera1->getProjectionMatrix(), static_cast<float>(args.totalTime), ws.cloudCoverage);
+
+    fog->update(
+        tod.fogColor,
+        tod.sunIntensity * ws.ambientMultiplier,
+        ws.fogDensity,
+        ws.fogHeightDensity,
+        50.0f * ws.visibility,
+        500.0f
+    );
+
+    lighting1->setGlobalAmbient({
+        tod.ambientColor.x * ws.ambientMultiplier,
+        tod.ambientColor.y * ws.ambientMultiplier,
+        tod.ambientColor.z * ws.ambientMultiplier
+    });
+
     lighting1->setLight(
         0,
         LightType::Directional,
@@ -211,14 +247,10 @@ void Application::onUpdate(UpdateEventArgs& args)
         tod.sunDirection,
         0.0f, 0.0f, 0.0f,
         tod.sunColor,
-        tod.sunIntensity * 2.0f
+        tod.sunIntensity * ws.sunMultiplier * 2.0f  // ← dimmed during storm
     );
+
     lighting1->updateGPU();
-
-    terrain1->update(viewProj, camera1->getPosition());
-
-    sky->update(tod, camera1->getViewMatrix(), camera1->getProjectionMatrix(), static_cast<float>(args.totalTime));
-
     keyboard->tick(); // must be last — updates prevKeys for isJustPressed
 }
 
@@ -244,22 +276,43 @@ void Application::onRender(RenderEventArgs& args)
         currentBackBufferIndex,
         rtvHeap->getDescriptorSize()
     );
+
     CD3DX12_CPU_DESCRIPTOR_HANDLE dsvHandle(
         dsvHeap->getHeap()->GetCPUDescriptorHandleForHeapStart()
     );
+
     commandList->OMSetRenderTargets(1, &rtvHandle, FALSE, &dsvHandle);
 
     // Sky color comes from time of day — dark at night, blue at noon
     const TimeOfDayState& tod = clock->getState();
     const float clearColor[] = { tod.ambientColor.x, tod.ambientColor.y, tod.ambientColor.z, 1.0f };
+
     // const float clearColor[] = { 0.0f, 0.0f, 0.0f, 1.0f };
     commandList->ClearRenderTargetView(rtvHandle, clearColor, 0, nullptr);
     commandList->ClearDepthStencilView(dsvHandle, D3D12_CLEAR_FLAG_DEPTH, 1.0f, 0, 0, nullptr);
 
-    sky->draw(commandList.Get());
+    const WeatherState& ws = weather->getCurrent();
+    auto p = player->getState();
 
-    // --- Draw terrain (sets its own pipeline + root sig internally) ---
-    terrain1->draw(commandList.Get(), lighting1->getCBV()->getGPUAddress());
+    particles->update(
+        commandList.Get(),
+        camera1->getPosition(),
+        viewProj,
+        camera1->getCamRight(),
+        camera1->getCamUp(),
+        static_cast<float>(args.elapsedTime),
+        ws.rainIntensity,
+        ws.snowIntensity,
+        ws.wind.direction,
+        ws.wind.strength,
+        terrain1->sampleHeight(p.position.x, p.position.z)
+    );
+
+    sky->draw(commandList.Get(), fog->getGPUAddress());
+    terrain1->draw(commandList.Get(), lighting1->getCBV()->getGPUAddress(), fog->getGPUAddress());
+    particles->draw(commandList.Get());
+
+    LOG_D3D12_MESSAGES(device->getDevice());
 
     // --- Draw model ---
     // model->draw(commandList.Get(), viewProj, lighting1->getCBV()->getGPUAddress());
@@ -287,8 +340,7 @@ void Application::transitionResource(
     D3D12_RESOURCE_STATES beforeState,
     D3D12_RESOURCE_STATES afterState)
 {
-    auto barrier = CD3DX12_RESOURCE_BARRIER::Transition(
-        resource.Get(), beforeState, afterState);
+    auto barrier = CD3DX12_RESOURCE_BARRIER::Transition(resource.Get(), beforeState, afterState);
     commandList->ResourceBarrier(1, &barrier);
 }
 
@@ -346,6 +398,7 @@ void Application::onKeyPressed(KeyEventArgs& e)
 
     // F1-F4 = jump to specific time of day for testing
     // F5 = toggle pause
+    // F6 - F10 = Weather Modes
     switch (e.key)
     {
         case KeyCode::Key::F1: clock->setTimeOfDay(0.25f); break; // sunrise
@@ -353,6 +406,11 @@ void Application::onKeyPressed(KeyEventArgs& e)
         case KeyCode::Key::F3: clock->setTimeOfDay(0.75f); break; // sunset
         case KeyCode::Key::F4: clock->setTimeOfDay(0.0f);  break; // midnight
         case KeyCode::Key::F5: clock->setPaused(!clock->getState().isNight); break;
+        case KeyCode::Key::F6:  weather->setWeather(WeatherType::Clear);    break;
+        case KeyCode::Key::F7:  weather->setWeather(WeatherType::Rain);     break;
+        case KeyCode::Key::F8:  weather->setWeather(WeatherType::Storm);    break;
+        case KeyCode::Key::F9:  weather->setWeather(WeatherType::Snow);     break;
+        case KeyCode::Key::F10: weather->setWeather(WeatherType::Blizzard); break;
         default: break;
     }
 }
@@ -369,6 +427,11 @@ void Application::cleanUp()
         directCommandQueue->flush();
 
     // Release in reverse dependency order
+    particles.reset();
+    weather.reset();
+    fog.reset();
+    sky.reset();
+    clock.reset();
     terrain1.reset();
     sceneGrid.reset();
     model.reset();

@@ -55,6 +55,25 @@ public:
     XMFLOAT3 getForward() const;
     XMFLOAT3 getRight()   const;
 
+    // for particles
+    XMFLOAT3 getCamRight() const {
+        XMFLOAT3 r;
+        XMStoreFloat3(&r, XMVector3Normalize(XMVectorSet(
+            view.r[0].m128_f32[0],
+            view.r[1].m128_f32[0],
+            view.r[2].m128_f32[0], 0)));
+        return r;
+    }
+
+    XMFLOAT3 getCamUp() const {
+        XMFLOAT3 u;
+        XMStoreFloat3(&u, XMVector3Normalize(XMVectorSet(
+            view.r[0].m128_f32[1],
+            view.r[1].m128_f32[1],
+            view.r[2].m128_f32[1], 0)));
+        return u;
+    }
+
 private:
     void updateViewMatrix();
 

@@ -18,4 +18,9 @@ dxc -T ps_6_0 -E psmain   -Fo bin/terrain_ps.cso  terrain_ps.hlsl
 dxc -T vs_6_0 -E vsmain -Fo bin/sky_vs.cso sky_vs.hlsl
 dxc -T ps_6_0 -E psmain -Fo bin/sky_ps.cso sky_ps.hlsl
 
+# Particle shaders
+dxc -T cs_6_0 -E csmain -Fo bin/particles_cs.cso particles_cs.hlsl
+dxc -T vs_6_0 -E vsmain -Fo bin/particles_vs.cso particles_vs.hlsl
+dxc -T ps_6_0 -E psmain -Fo bin/particles_ps.cso particles_ps.hlsl
+
 echo "Shader compilation done."

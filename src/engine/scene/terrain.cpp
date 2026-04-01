@@ -217,9 +217,9 @@ void Terrain::buildMesh()
         {
             uint32_t base = z * (PATCH_SIZE + 1) + x;
             indices.push_back(base);
-indices.push_back(base + (PATCH_SIZE + 1));
-indices.push_back(base + 1);
-indices.push_back(base + (PATCH_SIZE + 1) + 1);
+            indices.push_back(base + (PATCH_SIZE + 1));
+            indices.push_back(base + 1);
+            indices.push_back(base + (PATCH_SIZE + 1) + 1);
         }
     }
 
@@ -364,11 +364,15 @@ void Terrain::buildPipeline()
 
     CD3DX12_ROOT_PARAMETER heightmapParam;
     heightmapParam.InitAsDescriptorTable(1, &heightmapRange, D3D12_SHADER_VISIBILITY_ALL);
+    
+    CD3DX12_ROOT_PARAMETER fogParam;
+    fogParam.InitAsConstantBufferView(3, 0, D3D12_SHADER_VISIBILITY_PIXEL);
 
-    std::vector<D3D12_ROOT_PARAMETER> rootParams = { 
-        paramsParam, 
-        lightingParam,  // ← slot 1
-        heightmapParam  // ← slot 2 (was 1)
+    std::vector<D3D12_ROOT_PARAMETER> rootParams = {
+        paramsParam,    // slot 0 = b0 TerrainParams
+        lightingParam,  // slot 1 = b1 LightCB
+        fogParam,       // slot 2 = b3 FogCB
+        heightmapParam  // slot 3 = t0 heightmap SRV
     };
 
     D3D12_STATIC_SAMPLER_DESC sampler = {};
@@ -408,7 +412,6 @@ void Terrain::buildPipeline()
         &rasterDesc
     );
 }
-
 // -------------------------------------------------------
 // Update + Draw
 // -------------------------------------------------------
@@ -426,18 +429,22 @@ void Terrain::update(const XMMATRIX& viewProj, const XMFLOAT3& cameraPos)
     paramsBuffer->update(&params, sizeof(TerrainParams));
 }
 
-void Terrain::draw(ID3D12GraphicsCommandList* cmdList, D3D12_GPU_VIRTUAL_ADDRESS lightingCBV)
-{
+void Terrain::draw(
+    ID3D12GraphicsCommandList* cmdList,
+    D3D12_GPU_VIRTUAL_ADDRESS lightingCBV,
+    D3D12_GPU_VIRTUAL_ADDRESS fogCBV 
+) {
     cmdList->SetPipelineState(pipeline->getPipelineState().Get());
     cmdList->SetGraphicsRootSignature(pipeline->getRootSignature().Get());
 
     cmdList->SetGraphicsRootConstantBufferView(0, paramsBuffer->getGPUAddress());
-    cmdList->SetGraphicsRootConstantBufferView(1, lightingCBV); // ← shared lighting
+    cmdList->SetGraphicsRootConstantBufferView(1, lightingCBV);
+    cmdList->SetGraphicsRootConstantBufferView(2, fogCBV);
 
     ID3D12DescriptorHeap* heaps[] = { srvHeap->getHeap().Get() };
     cmdList->SetDescriptorHeaps(1, heaps);
 
-    cmdList->SetGraphicsRootDescriptorTable(2, srvHeap->getGPUHandle(heightmapSRVIndex)); // ← was 1
+    cmdList->SetGraphicsRootDescriptorTable(3, srvHeap->getGPUHandle(heightmapSRVIndex)); // ← was 1
 
     cmdList->IASetVertexBuffers(0, 1, &vbView);
     cmdList->IASetIndexBuffer(&ibView);

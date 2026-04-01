@@ -1,4 +1,5 @@
 #include "lighting.hlsl"
+#include "fog.hlsl"
 
 cbuffer TerrainParams : register(b0)
 {
@@ -45,7 +46,7 @@ float4 psmain(PSIn input) : SV_Target
     color = lerp(color, rockColor, smoothstep(0.3f, 0.7f, slopeFactor));
 
     // --- Lighting from shared buffer ---
-    float3 ambient = globalAmbient.rgb * color;
+    float3 ambient = globalAmbient.rgb * color * 3.0f;
     float3 diffuse = float3(0, 0, 0);
 
     for (uint i = 0; i < numLights; i++)
@@ -64,12 +65,17 @@ float4 psmain(PSIn input) : SV_Target
         }
 
         float ndotl = saturate(dot(input.nor, L));
-        diffuse += color * lights[i].color.rgb * ndotl * lights[i].intensity;
+        diffuse += color * lights[i].color.rgb * ndotl * lights[i].intensity * 2.0f;
     }
 
     // Night — dim blue moonlight so terrain isn't pitch black
     float sunIntensity = saturate(lights[0].direction.y * -1.0f);
     float3 moonLight   = color * float3(0.05f, 0.07f, 0.15f) * (1.0f - sunIntensity);
 
-    return float4(saturate(ambient + diffuse + moonLight), 1.0f);
+    float4 finalColor = float4(saturate(ambient + diffuse + moonLight), 1.0f);
+
+    float fogFactor = computeFog(input.posW, cameraPos);
+    float3 fogged   = lerp(finalColor.rgb, fogColor, fogFactor);
+
+    return float4(fogged, 1.0f);;
 }

@@ -17,6 +17,9 @@ class Keyboard;
 class Terrain;
 class Clock;
 class Sky;
+class Fog;
+class WeatherSystem;
+class Particles;
 
 class UpdateEventArgs;
 class RenderEventArgs;
@@ -88,6 +91,9 @@ class Application
         std::unique_ptr<Grid>            sceneGrid;
         std::unique_ptr<Terrain>         terrain1;
         std::unique_ptr<Sky>         sky;
+        std::unique_ptr<Fog> fog;
+        std::unique_ptr<WeatherSystem> weather;
+        std::unique_ptr<Particles> particles;
 
         // --- Model ---
         std::unique_ptr<Model>         model;

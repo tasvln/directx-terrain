@@ -32,7 +32,7 @@ public:
     ~Sky() = default;
 
     void update(const TimeOfDayState& tod, const XMMATRIX& view, const XMMATRIX& proj, float totalTime, float cloudCoverage = 0.8f);
-    void draw(ID3D12GraphicsCommandList* cmdList);
+    void draw(ID3D12GraphicsCommandList* cmdList, D3D12_GPU_VIRTUAL_ADDRESS fogCBV);
 
 private:
     void buildPipeline(DXGI_FORMAT rtvFormat);

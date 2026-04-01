@@ -99,7 +99,10 @@ void Sky::buildPipeline(DXGI_FORMAT rtvFormat)
     CD3DX12_ROOT_PARAMETER paramsParam;
     paramsParam.InitAsConstantBufferView(0, 0, D3D12_SHADER_VISIBILITY_ALL);
 
-    std::vector<D3D12_ROOT_PARAMETER> rootParams = { paramsParam };
+    CD3DX12_ROOT_PARAMETER fogParam;
+    fogParam.InitAsConstantBufferView(1, 0, D3D12_SHADER_VISIBILITY_PIXEL);
+
+    std::vector<D3D12_ROOT_PARAMETER> rootParams = { paramsParam, fogParam };
 
     std::vector<D3D12_INPUT_ELEMENT_DESC> layout = {
         { "POSITION", 0, DXGI_FORMAT_R32G32_FLOAT, 0, 0,              D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
@@ -130,11 +133,13 @@ void Sky::buildPipeline(DXGI_FORMAT rtvFormat)
     );
 }
 
-void Sky::draw(ID3D12GraphicsCommandList* cmdList)
+void Sky::draw(ID3D12GraphicsCommandList* cmdList, D3D12_GPU_VIRTUAL_ADDRESS fogCBV)
 {
     cmdList->SetPipelineState(pipeline->getPipelineState().Get());
     cmdList->SetGraphicsRootSignature(pipeline->getRootSignature().Get());
+    
     cmdList->SetGraphicsRootConstantBufferView(0, paramsBuffer->getGPUAddress());
+    cmdList->SetGraphicsRootConstantBufferView(1, fogCBV);
 
     cmdList->IASetVertexBuffers(0, 1, &vbView);
     cmdList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLESTRIP);

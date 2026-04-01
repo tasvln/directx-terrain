@@ -1,3 +1,13 @@
+cbuffer FogCB : register(b1)
+{
+    float3 fogColor;       
+    float fogDensity;
+    float heightDensity;  
+    float fogStart;
+    float fogEnd;         
+    float pad;
+};
+
 cbuffer SkyParams : register(b0)
 {
     float4x4 invViewProj;
@@ -145,6 +155,9 @@ float4 psmain(PSIn input) : SV_Target
         float cloudFade = saturate(viewDir.y * 5.0f);
         skyColor = lerp(skyColor, cloudColor, cloudAmount * cloudFade);
     }
+
+    float horizonHaze = saturate(1.0f - abs(viewDir.y) * 3.0f);
+    skyColor = lerp(skyColor, fogColor, horizonHaze * fogDensity * 50.0f);
 
     return float4(saturate(skyColor), 1.0f);
 }

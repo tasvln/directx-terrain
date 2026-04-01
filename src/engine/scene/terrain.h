@@ -30,7 +30,11 @@ public:
     ~Terrain() = default;
 
     void update(const XMMATRIX& viewProj, const XMFLOAT3& cameraPos);
-    void draw(ID3D12GraphicsCommandList* cmdList, D3D12_GPU_VIRTUAL_ADDRESS lightingCBV);
+    void draw(
+        ID3D12GraphicsCommandList* cmdList,
+        D3D12_GPU_VIRTUAL_ADDRESS lightingCBV,
+        D3D12_GPU_VIRTUAL_ADDRESS fogCBV 
+    );
 
     float sampleHeight(float x, float z) const;
 
