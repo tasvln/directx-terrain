@@ -6,6 +6,12 @@ A real-time weather and environment rendering system built with **DirectX 12** a
 
 <img width="1442" height="732" alt="Screenshot 2026-03-24 024151" src="https://github.com/user-attachments/assets/eafc2c34-467f-4ccc-a57b-46e9a0a03ca7" />
 
+
+
+https://github.com/user-attachments/assets/31d457df-17b5-443d-840d-de06a43fa6d5
+
+
+
 ---
 
 ## Features
