@@ -2,6 +2,10 @@
 
 A real-time weather and environment rendering system built with **DirectX 12** and **C++**, featuring GPU-driven particles, dynamic sky rendering, and a modular weather pipeline.
 
+<img width="1442" height="732" alt="Screenshot 2026-03-23 180041" src="https://github.com/user-attachments/assets/e91cea79-357c-4ad1-b5e0-94e0e1a898b9" />
+
+<img width="1442" height="732" alt="Screenshot 2026-03-24 024151" src="https://github.com/user-attachments/assets/eafc2c34-467f-4ccc-a57b-46e9a0a03ca7" />
+
 ---
 
 ## Features
